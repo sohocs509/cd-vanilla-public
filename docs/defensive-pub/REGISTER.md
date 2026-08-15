@@ -123,6 +123,29 @@ book's Appendix E all remain correct.
 > than pull, and do not push from an old working copy — doing so would restore the very
 > objects this removed.
 
-## Blocking item
+## Public availability — CLOSED 2026-08-15
 
-**`sohocs509/cd-vanilla` is PRIVATE** (confirmed 2026-08-09: `github.com/sohocs509/cd-vanilla` returns HTTP 404 to an anonymous request). Nothing is published and no prior art exists yet. Making it public (or publishing a spec-only repo) is prerequisite to DP-001 submission and to any promotion.
+**The code and specification are public: `github.com/Enthropic-Data-LLC/cd-vanilla-public`.**
+Verified reachable anonymously (HTTP 200, no account), and both anchored files re-hashed
+from the published copies to their recorded digests — `docs/SPEC.md` to `870a5ea0…d8d20c0d`
+and `cell-crypto.js` to `277cbcfe…8e7537bb`. The verification procedure in the disclosure's
+§10 can now be carried out by anyone, which was the whole of what was missing.
+
+This repository is a **clean-room export** of the private `sohocs509/cd-vanilla`, with fresh
+history, carrying the code, the specification and the anchored bytes but not the companion
+book. Two consequences worth stating rather than leaving to be discovered:
+
+- **The commits and tags cited in these documents live in the private source repository.**
+  `cell-format-v1.2-defensive-pub` (`62a8143`) and `cell-format-v1.3-defensive-pub` are not
+  present here. Nothing is lost by that: OpenTimestamps commits to *file content*, never to
+  git history, so every anchor verifies against the published files directly. That is
+  precisely what `docs/defensive-pub/anchors/` exists for.
+- **Accessibility dates from 2026-08-15, not from the anchors.** Existence is proven from
+  2026-07-18 (v1.2) and 2026-08-09 (v1.3); public availability begins the day this repository
+  was published. The two are separate requirements and carry separate dates.
+
+> **Still outstanding — a date is not a filing.** No venue submission has been made. DP-001
+> remains `draft`, `evidence/` is empty, and neither Software Heritage nor the Wayback
+> Machine has been asked to archive the repository. Publishing the repository closed the
+> availability gap; it did not by itself place the disclosure where an examiner searches.
+> See §4 of `docs/DEFENSIVE-PUBLISHING-GUIDE.md` for the venue ranking.

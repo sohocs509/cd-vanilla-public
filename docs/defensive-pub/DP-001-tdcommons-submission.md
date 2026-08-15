@@ -20,7 +20,10 @@ so both digests above can be reproduced without a repository checkout. The files
 paths `docs/SPEC.md` and `cell-crypto.js` have since advanced to v1.3 and hash
 differently; they carry their own, later anchor.
 
-Repository tag: `cell-format-v1.2-defensive-pub` (`sohocs509/cd-vanilla`, commit `62a8143`).
+Public repository: **`github.com/Enthropic-Data-LLC/cd-vanilla-public`** (published 2026-08-15).
+The anchored bytes and their proofs are in `docs/defensive-pub/anchors/`; the originating tag
+`cell-format-v1.2-defensive-pub` (commit `62a8143`) is in the private source repository and is
+not needed — the proofs commit to file content, not to git history.
 Verify any anchor with: `ots verify docs/defensive-pub/anchors/SPEC.md.ots`
 
 ---
@@ -221,7 +224,7 @@ Altering `"required": 1` to `"required": 2`, or `"expires_at": null` to a timest
 
 A complete, independently runnable reference implementation of the disclosed mechanism is published at:
 
-- Repository: `github.com/sohocs509/cd-vanilla`, tag `cell-format-v1.2-defensive-pub`
+- Repository: **`github.com/Enthropic-Data-LLC/cd-vanilla-public`** — public, no account required
 - Specification: `docs/SPEC.md` (§4.4 AAD binding; §4.1.1 canonical serialization)
 - Implementation: `cell-crypto.js` (functions `cellCreate` / `cellOpen`)
 - Test suite: `npm test`
@@ -234,7 +237,7 @@ The implementation uses only the W3C Web Cryptography API and no third-party cry
 
 - [x] **Author names** — TDCommons requires real named individual authors. David Brown, sole author, confirmed 2026-08-13.
 - [x] **Assignee confirmation** — Enthropic Data LLC confirmed as the publishing entity, 2026-08-13. Partner agreement to publication is assumed on that confirmation; if any partner has not been asked, ask before filing.
-- [ ] **Repository is public** — the Reference Implementation section cites a repo that is currently **PRIVATE**. Either make `sohocs509/cd-vanilla` public before submitting, or remove/adjust that section. A citation to an inaccessible repository weakens the enablement claim.
+- [x] **Repository is public** — **done 2026-08-15.** The Reference Implementation section cites `github.com/Enthropic-Data-LLC/cd-vanilla-public`, verified reachable anonymously, with both anchored files re-hashed from the published copies to their recorded digests. The enablement claim now rests on a repository any reader can open.
 - [x] **Confirm no secrets** — this document contains no keys, credentials, or customer data. Re-verify after any edit.
       Whole-repository scan 2026-08-14, working tree and all 87 commits of history: no private keys,
       API tokens, JWTs or credentialed connection strings. The demonstration cells in
