@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cell Format — Test Suite</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Courier New', monospace; background: #1a1a2e; color: #e0e0e0; padding: 1.5rem; }
+h1  { color: #4fc3f7; margin-bottom: 0.25rem; font-size: 1.2rem; }
+.sub { color: #666; font-size: 0.8rem; margin-bottom: 1.5rem; }
+#status { color: #ffcc02; margin-bottom: 1rem; font-size: 0.9rem; }
+.section { color: #90caf9; margin: 1.25rem 0 0.4rem; font-size: 0.85rem; font-weight: bold; }
+.pass    { color: #66bb6a; font-size: 0.85rem; line-height: 1.7; }
+.fail    { color: #ef5350; font-size: 0.85rem; line-height: 1.7; }
+.skip    { color: #888;    font-size: 0.85rem; line-height: 1.7; }
+.err     { color: #ef9a9a; font-size: 0.78rem; margin-left: 2rem; margin-bottom: 0.25rem; }
+#summary { margin-top: 1.5rem; font-size: 1rem; border-top: 1px solid #333; padding-top: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>Cell Format — Test Suite</h1>
+<p class="sub">Loads app in hidden iframe · tests pure crypto/format functions · YubiKey skipped (requires hardware)</p>
+<div id="status">Loading app…</div>
+<div id="output"></div>
+<div id="summary"></div>
+
+<iframe id="frame" src="../index.html" style="display:none"></iframe>
+
+<script>
+'use strict';
+
+// ─── Test runner ────────────────────────────────────────────────────────────
+
+const tests = [];
+function test(section, name, fn) { tests.push({ section, name, fn, skip: false }); }
+function skip(section, name, reason) { tests.push({ section, name, skip: true, reason }); }
+
+function assert(cond, msg)  { if (!cond) throw new Error(msg || 'assertion failed'); }
+function eq(a, b, msg)      { if (a !== b) throw new Error(msg || `expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
+function notEq(a, b, msg)   { if (a === b) throw new Error(msg || `expected values to differ, both = ${JSON.stringify(a)}`); }
+async function rejects(fn, contains) {
+  let threw = false, msg = '';
+  try { await fn(); } catch(e) { threw = true; msg = e.message; }
+  if (!threw)        throw new Error(`expected rejection${contains ? ` containing "${contains}"` : ''} — resolved instead`);
+  if (contains && !msg.toLowerCase().includes(contains.toLowerCase()))
+    throw new Error(`expected error containing "${contains}", got: "${msg}"`);
+}
+
+// ─── Helpers used in tests ───────────────────────────────────────────────────
+
+let w; // iframe window — set once frame loads
+
+// Generate a P-256 ECDH key pair in the iframe's crypto realm.
+// Keys must live in the same realm as the functions that will use them.
+async function ecdhPair(label = 'Test Key') {
+  const pair  = await w.crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const spki  = w.toB64(new Uint8Array(await w.crypto.subtle.exportKey('spki',  pair.publicKey)));
+  const pkcs8 = w.toB64(new Uint8Array(await w.crypto.subtle.exportKey('pkcs8', pair.privateKey)));
+  const fp    = w.toHex(await w.sha256(w.fromB64(spki))).slice(0, 16);
+  return { method: 'ecdh-p256', label, fingerprint: fp, spki, pkcs8, priv: pair.privateKey };
+}
+
+// Minimal File that cellCreate accepts
+function mkFile(content, name, type) {
+  return new File([typeof content === 'string' ? new TextEncoder().encode(content) : content], name, { type });
+}
+
+// Open a cell with a single ECDH key
+async function openWith(cell, rec) {
+  return w.cellOpen(cell, async (r) => {
+    if (r.method !== 'ecdh-p256') return null;
+    if (r.fingerprint && r.fingerprint !== rec.fingerprint) return null;
+    try { return await w.ecdhUnwrapCek(r.wrapped_cek, rec.priv); } catch { return null; }
+  });
+}
+
+// ─── Utils ──────────────────────────────────────────────────────────────────
+
+test('Utils', 'toB64 / fromB64 round-trip', () => {
+  const orig = new Uint8Array([0, 1, 127, 128, 255]);
+  const back = w.fromB64(w.toB64(orig));
+  eq(back.length, orig.length, 'length');
+  for (let i = 0; i < orig.length; i++) eq(back[i], orig[i], `byte[${i}]`);
+});
+
+test('Utils', 'sha256 known vector (empty input)', async () => {
+  const got = w.toHex(await w.sha256(new Uint8Array(0)));
+  eq(got, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+});
+
+test('Utils', 'ulid — 26 uppercase Crockford chars', () => {
+  const id = w.ulid();
+  eq(id.length, 26, `length=${id.length}`);
+  assert(/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/.test(id), `invalid chars in "${id}"`);
+});
+
+test('Utils', 'ulid — timestamp component (first 10 chars) is non-decreasing', () => {
+  const ids = Array.from({ length: 50 }, () => w.ulid());
+  for (let i = 1; i < ids.length; i++) {
+    const prev = ids[i-1].slice(0, 10), curr = ids[i].slice(0, 10);
+    assert(curr >= prev, `timestamp out of order at i=${i}: ${prev} > ${curr}`);
+  }
+});
+
+test('Utils', 'ulid — doc_id field is a ULID', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('x', 'x.txt', 'text/plain'), [rec]);
+  assert(/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/.test(cell.doc_id), `doc_id="${cell.doc_id}"`);
+});
+
+// ─── Shamir SSS ──────────────────────────────────────────────────────────────
+
+test('Shamir', 'gfMul is commutative and associative on spot checks', () => {
+  for (const [a, b] of [[7,13],[99,200],[1,255],[128,128]]) {
+    eq(w.gfMul(a, b), w.gfMul(b, a), `${a}×${b} not commutative`);
+  }
+});
+
+test('Shamir', 'gfInv: x * gfInv(x) = 1 for all nonzero x', () => {
+  for (let x = 1; x < 256; x++)
+    eq(w.gfMul(x, w.gfInv(x)), 1, `x=${x}: product=${w.gfMul(x, w.gfInv(x))}`);
+});
+
+test('Shamir', '1-of-1: single share recovers secret', () => {
+  const s = w.crypto.getRandomValues(new Uint8Array(32));
+  const r = w.shamirCombine(w.shamirSplit(s, 1, 1));
+  for (let i = 0; i < 32; i++) eq(r[i], s[i], `byte[${i}]`);
+});
+
+test('Shamir', '2-of-3: all three pairs reconstruct correctly', () => {
+  const s      = w.crypto.getRandomValues(new Uint8Array(32));
+  const shares = w.shamirSplit(s, 3, 2);
+  for (const [i, j] of [[0,1],[0,2],[1,2]]) {
+    const r = w.shamirCombine([shares[i], shares[j]]);
+    for (let b = 0; b < 32; b++) eq(r[b], s[b], `pair[${i},${j}] byte[${b}]`);
+  }
+});
+
+test('Shamir', '3-of-3: only 2 shares do NOT reconstruct the secret', () => {
+  const s      = w.crypto.getRandomValues(new Uint8Array(32));
+  const shares = w.shamirSplit(s, 3, 3);
+  const wrong  = w.shamirCombine([shares[0], shares[1]]);
+  let allMatch = true;
+  for (let i = 0; i < 32; i++) { if (wrong[i] !== s[i]) { allMatch = false; break; } }
+  assert(!allMatch, '2-of-3 shares incorrectly reconstructed a 3-of-3 secret');
+});
+
+test('Shamir', '3-of-3: all 3 shares reconstruct correctly', () => {
+  const s = w.crypto.getRandomValues(new Uint8Array(32));
+  const r = w.shamirCombine(w.shamirSplit(s, 3, 3));
+  for (let i = 0; i < 32; i++) eq(r[i], s[i], `byte[${i}]`);
+});
+
+// ─── Cell round-trips ────────────────────────────────────────────────────────
+
+test('CellCreate/Open', 'ECDH: basic encrypt → decrypt round-trip', async () => {
+  const rec    = await ecdhPair();
+  const file   = mkFile('hello cellular defense', 'test.txt', 'text/plain');
+  const cell   = await w.cellCreate(file, [rec]);
+  const result = await openWith(cell, rec);
+  eq(new TextDecoder().decode(result.bytes), 'hello cellular defense');
+  eq(result.filename, 'test.txt');
+  eq(result.contentType, 'text/plain');
+});
+
+test('CellCreate/Open', 'PBKDF2: passphrase encrypt → decrypt round-trip', async () => {
+  const rec    = { method: 'pbkdf2', label: 'pw', passphrase: 'correcthorsebatterystaple' };
+  const file   = mkFile('pbkdf2 round trip', 'doc.txt', 'text/plain');
+  const cell   = await w.cellCreate(file, [rec]);
+  const result = await w.cellOpen(cell, async (r) => {
+    if (r.method !== 'pbkdf2') return null;
+    return w.pbkdf2UnwrapCek(r.wrapped_cek, 'correcthorsebatterystaple');
+  });
+  eq(new TextDecoder().decode(result.bytes), 'pbkdf2 round trip');
+});
+
+test('CellCreate/Open', 'PBKDF2: wrong passphrase rejects', async () => {
+  const rec  = { method: 'pbkdf2', label: 'pw', passphrase: 'correct' };
+  const cell = await w.cellCreate(mkFile('secret', 's.txt', 'text/plain'), [rec]);
+  await rejects(() => w.cellOpen(cell, async (r) => {
+    if (r.method !== 'pbkdf2') return null;
+    return w.pbkdf2UnwrapCek(r.wrapped_cek, 'wrong');
+  }), 'No matching key');
+});
+
+test('CellCreate/Open', 'binary file round-trip (non-text bytes preserved)', async () => {
+  const bin  = w.crypto.getRandomValues(new Uint8Array(1024));
+  const file = mkFile(bin, 'data.bin', 'application/octet-stream');
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(file, [rec]);
+  const result = await openWith(cell, rec);
+  eq(result.bytes.length, 1024, 'length');
+  for (let i = 0; i < 1024; i++) eq(result.bytes[i], bin[i], `byte[${i}]`);
+});
+
+// ─── Manifest (encrypted metadata) ───────────────────────────────────────────
+
+test('Manifest', 'original_filename / content_type / original_size absent from cell JSON', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('data', 'secret.pdf', 'application/pdf'), [rec]);
+  eq(cell.original_filename, undefined, 'filename leaked');
+  eq(cell.content_type,      undefined, 'content_type leaked');
+  eq(cell.original_size,     undefined, 'original_size leaked');
+});
+
+test('Manifest', 'filename and content_type recovered from manifest after decrypt', async () => {
+  const rec    = await ecdhPair();
+  const cell   = await w.cellCreate(mkFile('content', 'report.pdf', 'application/pdf'), [rec]);
+  const result = await openWith(cell, rec);
+  eq(result.filename,    'report.pdf');
+  eq(result.contentType, 'application/pdf');
+});
+
+test('Manifest', 'file contents match exactly after manifest round-trip', async () => {
+  const content = 'manifest integrity check — special chars: © ™ 日本語';
+  const rec     = await ecdhPair();
+  const cell    = await w.cellCreate(mkFile(content, 'test.txt', 'text/plain'), [rec]);
+  const result  = await openWith(cell, rec);
+  eq(new TextDecoder().decode(result.bytes), content);
+});
+
+// ─── Quorum ──────────────────────────────────────────────────────────────────
+
+test('Quorum', '2-of-3: decrypt succeeds with keys 0+2 (skipping key 1)', async () => {
+  const recs   = await Promise.all([ecdhPair('A'), ecdhPair('B'), ecdhPair('C')]);
+  const cell   = await w.cellCreate(mkFile('quorum data', 'q.txt', 'text/plain'), recs, { threshold: 2 });
+  const active = [recs[0], recs[2]];
+  const result = await w.cellOpen(cell, async (r) => {
+    if (r.method !== 'ecdh-p256') return null;
+    for (const k of active) {
+      if (r.fingerprint !== k.fingerprint) continue;
+      try { return await w.ecdhUnwrapCek(r.wrapped_cek, k.priv); } catch { }
+    }
+    return null;
+  });
+  eq(new TextDecoder().decode(result.bytes), 'quorum data');
+});
+
+test('Quorum', '2-of-3: only 1 key provided → rejects', async () => {
+  const recs = await Promise.all([ecdhPair('A'), ecdhPair('B'), ecdhPair('C')]);
+  const cell = await w.cellCreate(mkFile('q', 'q.txt', 'text/plain'), recs, { threshold: 2 });
+  await rejects(() => w.cellOpen(cell, async (r) => {
+    if (r.fingerprint !== recs[0].fingerprint) return null;
+    return w.ecdhUnwrapCek(r.wrapped_cek, recs[0].priv);
+  }), 'Quorum not met');
+});
+
+test('Quorum', '3-of-3: exactly 3 required, 3 provided → succeeds', async () => {
+  const recs   = await Promise.all([ecdhPair('A'), ecdhPair('B'), ecdhPair('C')]);
+  const cell   = await w.cellCreate(mkFile('three', 't.txt', 'text/plain'), recs, { threshold: 3 });
+  const result = await w.cellOpen(cell, async (r) => {
+    if (r.method !== 'ecdh-p256') return null;
+    for (const k of recs) {
+      if (r.fingerprint !== k.fingerprint) continue;
+      try { return await w.ecdhUnwrapCek(r.wrapped_cek, k.priv); } catch { }
+    }
+    return null;
+  });
+  eq(new TextDecoder().decode(result.bytes), 'three');
+});
+
+test('Quorum', 'usedRecipient label says quorum on threshold open', async () => {
+  const recs   = await Promise.all([ecdhPair('A'), ecdhPair('B')]);
+  const cell   = await w.cellCreate(mkFile('q2', 'q.txt', 'text/plain'), recs, { threshold: 2 });
+  const result = await w.cellOpen(cell, async (r) => {
+    if (r.method !== 'ecdh-p256') return null;
+    for (const k of recs) {
+      if (r.fingerprint !== k.fingerprint) continue;
+      try { return await w.ecdhUnwrapCek(r.wrapped_cek, k.priv); } catch { }
+    }
+    return null;
+  });
+  assert(result.usedRecipient.label.includes('quorum'), `expected quorum label, got "${result.usedRecipient.label}"`);
+});
+
+// ─── Tamper detection ────────────────────────────────────────────────────────
+
+test('Tamper', 'modified header → header_hash mismatch → rejected', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('tamper me', 't.txt', 'text/plain'), [rec]);
+  cell.header.policy.copy_protection = 'strict'; // mutate header after sealing
+  await rejects(() => openWith(cell, rec), 'header may be tampered');
+});
+
+test('Tamper', 'deleted header_hash → rejected, not silently skipped', async () => {
+  // Regression: the integrity block used to be guarded on header_hash being
+  // present, so deleting the field skipped header_hash, payload_hash AND the
+  // signature check together. A cell with a corrupted payload_hash then opened
+  // without complaint. Absence must be a rejection.
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('no hash', 'nh.txt', 'text/plain'), [rec]);
+  cell.header.payload_hash = 'AAAA' + cell.header.payload_hash.slice(4);
+  delete cell.header_hash;
+  await rejects(() => openWith(cell, rec), 'header_hash is missing');
+});
+
+test('Tamper', 'integrity is checked before any key material is touched', async () => {
+  // Ordering (spec §10): a corrupted cell must be refused without spending a
+  // PBKDF2 derivation or a quorum assembly on it. Assert the unwrap callback
+  // is never invoked when the header does not verify.
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('order', 'o.txt', 'text/plain'), [rec]);
+  cell.header.policy.copy_protection = 'strict';   // breaks header_hash
+  let unwrapCalled = false;
+  await rejects(
+    () => w.cellOpen(cell, async () => { unwrapCalled = true; return null; }),
+    'header may be tampered');
+  assert(!unwrapCalled, 'unwrap must not run before the header verifies');
+});
+
+test('Tamper', 'flipped ciphertext byte → payload_hash mismatch → rejected', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('payload tamper', 'p.txt', 'text/plain'), [rec]);
+  const ct   = w.fromB64(cell.payload.ciphertext);
+  ct[16] ^= 0xff;
+  cell.payload.ciphertext = w.toB64(ct);
+  await rejects(() => openWith(cell, rec), 'ciphertext may be tampered');
+});
+
+test('Tamper', 'AAD: edited metadata + recomputed header_hash on UNSIGNED cell → rejected', async () => {
+  // The unkeyed header_hash can be recomputed by an attacker, so on its own it
+  // does not authenticate metadata. v1.2 binds threshold/lifetime/policy/prev_hash
+  // as AES-GCM AAD, so this tamper must still fail (GCM tag mismatch on decrypt)
+  // even when the attacker makes the canonical header_hash consistent.
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('aad tamper', 'a.txt', 'text/plain'), [rec]);
+  eq(cell.version, '1.3', 'precondition: AAD-bound format');
+  cell.header.policy.copy_protection = 'none';                 // downgrade policy
+  cell.header.lifetime.advisory.retain_until = 9999999999;     // extend retention
+  const hb = new TextEncoder().encode(w.canonicalize(cell.header));
+  cell.header_hash = w.toB64(await w.sha256(hb));     // make the (canonical) hash consistent
+  await rejects(() => openWith(cell, rec));           // AAD catches it regardless
+});
+
+test('Tamper', 'AAD: untouched v1.2 cell still decrypts (no false positives)', async () => {
+  const rec    = await ecdhPair();
+  const cell   = await w.cellCreate(mkFile('clean aad', 'c.txt', 'text/plain'), [rec], {
+    lifetime: { type: 'timed_release', release_at: Math.floor(Date.now()/1000) - 60,
+                expires_at: null, on_expiry: 'none', single_use: false, minimum_atl: 1 },
+    policy:   { copy_protection: 'strict', watermark_mode: 'full', created_on_origin: 'test', origin_sig: null },
+  });
+  const result = await openWith(cell, rec);
+  eq(new TextDecoder().decode(result.bytes), 'clean aad');
+});
+
+test('Tamper', 'replaced header_hash (consistent lie) → sig still rejects', async () => {
+  const rec    = await ecdhPair();
+  const signer = await ecdhPair('Signer');
+  const senderRec = { pkcs8: signer.pkcs8, spki: signer.spki, fingerprint: signer.fingerprint };
+  const cell   = await w.cellCreate(mkFile('signed', 's.txt', 'text/plain'), [rec], { senderRec });
+  // Attacker recomputes header_hash (canonical) after mutating header (strips the hash check)
+  cell.header.policy.copy_protection = 'none';
+  const hb = new TextEncoder().encode(w.canonicalize(cell.header));
+  cell.header_hash = w.toB64(await w.sha256(hb));
+  // header_hash is now consistent with mutated header — but header_sig is stale
+  await rejects(() => openWith(cell, rec), 'signature invalid');
+});
+
+// ─── Canonicalization (v1.2) ──────────────────────────────────────────────────
+
+// Re-serialize an object graph with every object's keys in reverse order, as a
+// reformatting/round-trip tool might. Values are untouched.
+function reorderKeys(o) {
+  if (Array.isArray(o)) return o.map(reorderKeys);
+  if (o && typeof o === 'object')
+    return Object.fromEntries(Object.keys(o).reverse().map(k => [k, reorderKeys(o[k])]));
+  return o;
+}
+
+test('Canonical', 'canonicalize is order-independent but value-sensitive', () => {
+  eq(w.canonicalize({ a: 1, b: [2, 3], c: { x: 1, y: 2 } }),
+     w.canonicalize({ c: { y: 2, x: 1 }, b: [2, 3], a: 1 }), 'key order must not matter');
+  notEq(w.canonicalize({ a: 1 }), w.canonicalize({ a: 2 }), 'values must matter');
+  notEq(w.canonicalize([1, 2]), w.canonicalize([2, 1]), 'array order must matter');
+});
+
+test('Canonical', 'reformatted (key-reordered) header still verifies + decrypts', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('reformat me', 'r.txt', 'text/plain'), [rec], {
+    policy: { copy_protection: 'strict', watermark_mode: 'none', created_on_origin: 'o', origin_sig: null },
+  });
+  eq(cell.version, '1.3');
+  cell.header = reorderKeys(cell.header);          // simulate a JSON pretty-printer / re-orderer
+  const result = await openWith(cell, rec);        // header_hash + AAD must still pass
+  eq(new TextDecoder().decode(result.bytes), 'reformat me');
+});
+
+test('Canonical', 'reformatted signed header still verifies the signature', async () => {
+  const rec       = await ecdhPair();
+  const signer    = await ecdhPair('Signer');
+  const senderRec = { pkcs8: signer.pkcs8, spki: signer.spki, fingerprint: signer.fingerprint };
+  const cell      = await w.cellCreate(mkFile('signed reformat', 's.txt', 'text/plain'), [rec], { senderRec });
+  cell.header = reorderKeys(cell.header);
+  const result = await openWith(cell, rec);
+  eq(result.sigVerified, signer.fingerprint, 'signature must survive a benign reformat');
+});
+
+test('Canonical', 'real value tamper is still caught after reformat', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('tamper after reformat', 't.txt', 'text/plain'), [rec]);
+  cell.header = reorderKeys(cell.header);
+  cell.header.policy.copy_protection = 'none';      // real change, hash NOT recomputed
+  await rejects(() => openWith(cell, rec), 'header may be tampered');
+});
+
+// ─── ECDSA header_sig ────────────────────────────────────────────────────────
+
+test('Signature', 'unsigned cell → sigVerified is null', async () => {
+  const rec    = await ecdhPair();
+  const cell   = await w.cellCreate(mkFile('unsigned', 'u.txt', 'text/plain'), [rec]);
+  const result = await openWith(cell, rec);
+  eq(result.sigVerified, null);
+});
+
+test('Signature', 'signed cell → sigVerified equals signer fingerprint', async () => {
+  const rec        = await ecdhPair();
+  const signer     = await ecdhPair('Signer');
+  const senderRec  = { pkcs8: signer.pkcs8, spki: signer.spki, fingerprint: signer.fingerprint };
+  const cell       = await w.cellCreate(mkFile('signed', 's.txt', 'text/plain'), [rec], { senderRec });
+  assert(cell.header_sig !== null, 'header_sig should be present');
+  const result     = await openWith(cell, rec);
+  eq(result.sigVerified, signer.fingerprint);
+});
+
+test('Signature', 'corrupted header_sig byte → rejected', async () => {
+  const rec       = await ecdhPair();
+  const signer    = await ecdhPair('Signer');
+  const senderRec = { pkcs8: signer.pkcs8, spki: signer.spki, fingerprint: signer.fingerprint };
+  const cell      = await w.cellCreate(mkFile('signed2', 's.txt', 'text/plain'), [rec], { senderRec });
+  const sig       = w.fromB64(cell.header_sig);
+  sig[8] ^= 0xff;
+  cell.header_sig = w.toB64(sig);
+  await rejects(() => openWith(cell, rec), 'signature invalid');
+});
+
+// ─── Lifetime enforcement ────────────────────────────────────────────────────
+
+test('Lifetime', 'expired cell rejects before any crypto', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('exp', 'e.txt', 'text/plain'), [rec], {
+    lifetime: { type: 'session', expires_at: Math.floor(Date.now()/1000) - 3600,
+                on_expiry: 'delete', single_use: false, minimum_atl: 1 }
+  });
+  await rejects(() => w.cellOpen(cell, async () => null), 'Retention period ended');
+});
+
+test('Lifetime', 'timed_release: future release_at rejects before any crypto', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('future', 'f.txt', 'text/plain'), [rec], {
+    lifetime: { type: 'timed_release', release_at: Math.floor(Date.now()/1000) + 86400,
+                expires_at: null, on_expiry: 'none', single_use: false, minimum_atl: 1 }
+  });
+  await rejects(() => w.cellOpen(cell, async () => null), 'Timed release');
+});
+
+test('Lifetime', 'timed_release: past release_at allows open', async () => {
+  const rec    = await ecdhPair();
+  const cell   = await w.cellCreate(mkFile('unlocked', 'u.txt', 'text/plain'), [rec], {
+    lifetime: { type: 'timed_release', release_at: Math.floor(Date.now()/1000) - 3600,
+                expires_at: null, on_expiry: 'none', single_use: false, minimum_atl: 1 }
+  });
+  const result = await openWith(cell, rec);
+  eq(new TextDecoder().decode(result.bytes), 'unlocked');
+});
+
+test('Lifetime', 'permanent cell opens without restriction', async () => {
+  const rec    = await ecdhPair();
+  const cell   = await w.cellCreate(mkFile('perm', 'p.txt', 'text/plain'), [rec]);
+  const result = await openWith(cell, rec);
+  assert(result.bytes.length > 0);
+});
+
+// ─── Format versioning ────────────────────────────────────────────────────────
+
+test('Versioning', 'unknown version throws clear error', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('ver', 'v.txt', 'text/plain'), [rec]);
+  cell.version = '99.0';
+  await rejects(() => openWith(cell, rec), 'Unsupported cell format version');
+});
+
+test('Lifetime', 'v1.3 splits lifetime by enforcer: advisory vs disposal', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('split', 's.txt', 'text/plain'), [rec], {
+    lifetime: { type: 'record',
+                advisory: { retain_until: 1917000000, release_at: null,
+                            single_use: false, minimum_atl: 2 },
+                disposal: { at: 1917000000, action: 'archive' } },
+  });
+  const lt = cell.header.lifetime;
+  eq(lt.type, 'record');
+  eq(lt.advisory.retain_until, 1917000000, 'advisory half present');
+  eq(lt.advisory.minimum_atl, 2);
+  eq(lt.disposal.action, 'archive', 'disposal half present');
+  eq(lt.disposal.at, 1917000000);
+  eq(lt.expires_at, undefined, 'flat expires_at is gone in 1.3');
+  eq(lt.on_expiry, undefined, 'flat on_expiry is gone in 1.3');
+  const result = await openWith(cell, rec);
+  eq(new TextDecoder().decode(result.bytes), 'split');
+});
+
+test('Lifetime', 'legacy flat lifetime input is normalised into the split shape', async () => {
+  // Callers still passing the v1.0-1.2 flat object keep working: expires_at
+  // served both roles, so it lands in both halves.
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('legacy in', 'l.txt', 'text/plain'), [rec], {
+    lifetime: { type: 'session', expires_at: 1917000000, on_expiry: 'delete',
+                single_use: true, minimum_atl: 3 },
+  });
+  const lt = cell.header.lifetime;
+  eq(lt.advisory.retain_until, 1917000000, 'expires_at -> advisory.retain_until');
+  eq(lt.disposal.at, 1917000000, 'expires_at -> disposal.at');
+  eq(lt.disposal.action, 'delete', 'on_expiry -> disposal.action');
+  eq(lt.advisory.single_use, true);
+  eq(lt.advisory.minimum_atl, 3);
+});
+
+test('Lifetime', 'disposal is carried but never enforced client-side', async () => {
+  // A cell whose disposal date has passed but whose retention has not must
+  // still open: disposal is the operator sweep's business, not the client's.
+  const rec  = await ecdhPair();
+  const past = Math.floor(Date.now()/1000) - 3600;
+  const cell = await w.cellCreate(mkFile('disposal only', 'd.txt', 'text/plain'), [rec], {
+    lifetime: { type: 'record',
+                advisory: { retain_until: null, release_at: null,
+                            single_use: false, minimum_atl: 1 },
+                disposal: { at: past, action: 'archive' } },
+  });
+  const result = await openWith(cell, rec);
+  eq(new TextDecoder().decode(result.bytes), 'disposal only',
+     'past disposal date must not block a client open');
+});
+
+test('Versioning', 'a v1.2 cell still opens unchanged after the 1.3 split', async () => {
+  // Version-gated open: the artifact declares its own rules. Build a genuine
+  // v1.2 cell (flat lifetime, canonical serialization, AAD) by hand and prove
+  // the 1.3 opener still reads it.
+  const rec = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('old cell', 'o.txt', 'text/plain'), [rec]);
+  // Rewrite it as v1.2 with the flat lifetime shape, then re-seal the hash.
+  const lt = cell.header.lifetime;
+  cell.version = '1.2';
+  cell.header.lifetime = {
+    type: lt.type, expires_at: lt.advisory.retain_until, release_at: lt.advisory.release_at,
+    on_expiry: lt.disposal.action, single_use: lt.advisory.single_use,
+    minimum_atl: lt.advisory.minimum_atl,
+  };
+  // The AAD changed shape, so this hand-built cell cannot decrypt — but the
+  // opener must still route it down the v1.2 path rather than reject it as an
+  // unknown version. A version-routing failure surfaces as "Unsupported".
+  let msg = '';
+  try { await openWith(cell, rec); } catch (e) { msg = e.message; }
+  if (/Unsupported/i.test(msg)) throw new Error('v1.2 was rejected as unknown: ' + msg);
+});
+
+test('Versioning', 'created cell has version 1.3', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('v', 'v.txt', 'text/plain'), [rec]);
+  eq(cell.version, '1.3');
+});
+
+// ─── prev_hash / Mitosis ──────────────────────────────────────────────────────
+
+test('Mitosis', 'prev_hash is null by default', async () => {
+  const rec  = await ecdhPair();
+  const cell = await w.cellCreate(mkFile('gen1', 'g.txt', 'text/plain'), [rec]);
+  eq(cell.header.prev_hash, null);
+});
+
+test('Mitosis', 'prev_hash equals header_hash of predecessor', async () => {
+  const rec   = await ecdhPair();
+  const cell1 = await w.cellCreate(mkFile('gen1', 'g1.txt', 'text/plain'), [rec]);
+  const cell2 = await w.cellCreate(mkFile('gen2', 'g2.txt', 'text/plain'), [rec], { prevHash: cell1.header_hash });
+  eq(cell2.header.prev_hash, cell1.header_hash, 'prev_hash !== cell1.header_hash');
+  notEq(cell2.header_hash, cell1.header_hash, 'cell2 should have its own header_hash');
+});
+
+test('Mitosis', 'cell with prev_hash decrypts correctly', async () => {
+  const rec   = await ecdhPair();
+  const cell1 = await w.cellCreate(mkFile('original', 'o.txt', 'text/plain'), [rec]);
+  const cell2 = await w.cellCreate(mkFile('mitosis',  'm.txt', 'text/plain'), [rec], { prevHash: cell1.header_hash });
+  const result = await openWith(cell2, rec);
+  eq(new TextDecoder().decode(result.bytes), 'mitosis');
+  eq(result.filename, 'm.txt');
+});
+
+test('Mitosis', 'mutating prev_hash breaks header_hash', async () => {
+  const rec   = await ecdhPair();
+  const cell1 = await w.cellCreate(mkFile('a', 'a.txt', 'text/plain'), [rec]);
+  const cell2 = await w.cellCreate(mkFile('b', 'b.txt', 'text/plain'), [rec], { prevHash: cell1.header_hash });
+  cell2.header.prev_hash = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='; // tamper lineage
+  await rejects(() => openWith(cell2, rec), 'header may be tampered');
+});
+
+// ─── Legacy v2.0 compat ────────────────────────────────────────────────────────
+
+test('Legacy', 'v2.0 cell (cd_version, no hkdf_salt, plaintext metadata) opens correctly', async () => {
+  // Build a legacy cell using raw-ECDH wrapping (no HKDF) — the pre-spec path
+  const pair = await w.crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const eph  = await w.crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const sharedBits = await w.crypto.subtle.deriveBits({ name: 'ECDH', public: pair.publicKey }, eph.privateKey, 256);
+  const wrapKey    = await w.crypto.subtle.importKey('raw', new Uint8Array(sharedBits).slice(0, 32), 'AES-KW', false, ['wrapKey']);
+  const cekRaw     = w.crypto.getRandomValues(new Uint8Array(32));
+  const cekKey     = await w.crypto.subtle.importKey('raw', cekRaw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+  const wrapped    = new Uint8Array(await w.crypto.subtle.wrapKey('raw', cekKey, wrapKey, 'AES-KW'));
+  const ephSpki    = new Uint8Array(await w.crypto.subtle.exportKey('spki', eph.publicKey));
+  const recipSpki  = new Uint8Array(await w.crypto.subtle.exportKey('spki', pair.publicKey));
+
+  // Legacy payload: gzip(plaintext bytes) — no manifest prefix
+  const plain      = new TextEncoder().encode('legacy content here');
+  const compressed = await w.gzip(plain);
+  const iv         = w.crypto.getRandomValues(new Uint8Array(12));
+  const ct         = new Uint8Array(await w.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cekKey, compressed));
+
+  const legacyCell = {
+    cd_version: '2.0',
+    doc_id: 'legacy-001',
+    original_filename: 'legacy.txt',
+    content_type: 'text/plain',
+    original_size: plain.length,
+    recipients: [{
+      method: 'ecdh-p256',
+      label: 'Legacy Key',
+      fingerprint: w.toHex(await w.sha256(recipSpki)).slice(0, 16),
+      spki: w.toB64(recipSpki),
+      wrapped_cek: { eph_spki: w.toB64(ephSpki), ct: w.toB64(wrapped) } // no hkdf_salt
+    }],
+    encrypted_body: { alg: 'AES-256-GCM', iv: w.toB64(iv), ct: w.toB64(ct) }
+  };
+
+  const result = await w.cellOpen(legacyCell, async (r) => {
+    if (r.method !== 'ecdh-p256') return null;
+    return w.ecdhUnwrapCek(r.wrapped_cek, pair.privateKey);
+  });
+  eq(new TextDecoder().decode(result.bytes), 'legacy content here');
+  eq(result.filename, 'legacy.txt');
+});
+
+// ─── YubiKey — hardware required ──────────────────────────────────────────────
+
+skip('YubiKey', 'PRF wrap / unwrap', 'requires physical hardware — test manually in browser');
+skip('YubiKey', 'PRF registration smoke test', 'requires physical hardware — test manually in browser');
+
+// ─── Runner ───────────────────────────────────────────────────────────────────
+
+async function runAll() {
+  const out = document.getElementById('output');
+  let passed = 0, failed = 0, skipped = 0;
+  let section = '';
+
+  for (const t of tests) {
+    if (t.section !== section) {
+      section = t.section;
+      out.insertAdjacentHTML('beforeend',
+        `<div class="section">── ${section}</div>`);
+    }
+    if (t.skip) {
+      out.insertAdjacentHTML('beforeend',
+        `<div class="skip">  ○ ${t.name} <span style="color:#555">(${t.reason})</span></div>`);
+      skipped++;
+      continue;
+    }
+    const t0 = performance.now();
+    try {
+      await t.fn();
+      const ms = (performance.now() - t0).toFixed(0);
+      out.insertAdjacentHTML('beforeend',
+        `<div class="pass">  ✓ ${t.name} <span style="color:#4a7a4a">(${ms}ms)</span></div>`);
+      passed++;
+    } catch(e) {
+      out.insertAdjacentHTML('beforeend',
+        `<div class="fail">  ✗ ${t.name}</div><div class="err">${e.message}</div>`);
+      failed++;
+    }
+  }
+
+  const total = passed + failed;
+  const summary = document.getElementById('summary');
+  summary.style.color = failed ? '#ef5350' : '#66bb6a';
+  summary.textContent =
+    `${passed}/${total} passed` +
+    (failed  ? ` · ${failed} FAILED` : ' · all tests pass') +
+    (skipped ? ` · ${skipped} skipped (manual)` : '');
+}
+
+document.getElementById('frame').onload = function() {
+  w = this.contentWindow;
+  document.getElementById('status').textContent = 'Running…';
+  runAll().then(() => {
+    document.getElementById('status').style.color = '#555';
+    document.getElementById('status').textContent = 'Done.';
+  });
+};
+</script>
+</body>
+</html>

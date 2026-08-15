@@ -1,0 +1,12 @@
+node_modules/
+*.cell
+*.celz
+*.cdkey
+*.cdpub
+
+# Demonstration cells cited as figure source data in docs/DEFENSIVE-DISCLOSURE.md
+# are deliberately tracked: the figures quote their exact hashes, so a reader
+# must be able to fetch the same bytes and recheck them. Purpose-built for
+# publication — fixed content, keys generated at mint time, nothing personal.
+# Regenerate with: node tools/make-figure-cells.mjs
+!docs/figure-data/*.cell

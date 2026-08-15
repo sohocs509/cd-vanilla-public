@@ -1,0 +1,54 @@
+{
+  "version": "1.3",
+  "doc_id": "01KZMFP69XGPWKB874CC16R4YF",
+  "created_at": 1786320197,
+  "header": {
+    "prev_hash": null,
+    "threshold": {
+      "required": 1,
+      "of_total": 1
+    },
+    "lifetime": {
+      "type": "permanent",
+      "advisory": {
+        "retain_until": null,
+        "release_at": null,
+        "single_use": false,
+        "minimum_atl": 1
+      },
+      "disposal": {
+        "at": null,
+        "action": "none"
+      }
+    },
+    "policy": {
+      "copy_protection": "standard",
+      "watermark_mode": "none",
+      "created_on_origin": null,
+      "origin_sig": null
+    },
+    "access_map": [
+      {
+        "label": "Director A",
+        "method": "ecdh-p256",
+        "fingerprint": "df55f0be5fdbf36a",
+        "wrapped_cek": {
+          "eph_spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzLlJHva8E8tki/Zkre0CFx5/7s6D5lH9qVaM/WRRmj13thetls1PmWQ1/UhyNzx3inhEos7VNFBXthIGxt91vg==",
+          "hkdf_salt": "1ny1tmUPKYFfbn5H/42YQ18WISkzZNBTQuIcwLQSlAs=",
+          "ct": "Qzx/Sj8BQ+D3830JkdFyA9uRn4ucKGbqpclMYStJEsu8FoEZazFSjQ=="
+        }
+      }
+    ],
+    "payload_hash": "Ux33QrUoR2ouRrta6WZ4LCCVUuebhplQmhpzljJcVGo="
+  },
+  "header_hash": "PQYktm8aFjW7jWfOcOauSCOBNIBhb7Z/4lpn4xZA5jk=",
+  "header_sig": "QqBGV3qmq9X2eE1CDryqCcHyMJKaxUJmF88zojJZDm5lhoucrG4WmDFJLkSNdTSmg1o8pQVZly09nc8rq2yo7w==",
+  "header_sig_by": "cd9e3a5d1ef4f18b",
+  "header_sig_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAErHS2jT885Tb5qKmGZrEk/gkCMtqPaFDfHueA/2RVD+U0R4Wet7Rd5fFf88zNMhsSLS02rqdHsshHph/I3bxVRg==",
+  "payload": {
+    "alg": "AES-256-GCM",
+    "encoding": "base64+gzip",
+    "iv": "ip3EgVSYuT3B5vYc",
+    "ciphertext": "3j24tl44GcUDZmdYy54wg9fAO5MvwvXcDlbJcQ0jihv2KdR8JvwdkLGsvD4uEeQGTJwoJx35hAqWxm5dz6OvbsShGYIIJ3QaEPu4MfSWJhl9/xFhykKjzjfdzDexgLzvhqAe92gXIIhIU2LUNpgeXa5ZvHpxtPi5Vyu/5x6cgT6tYLESpUoDvLwnfEgKJWbNGwUAbRgWt12AxYfuFcmbJW3lmMKLchQLc+pZtzbkzYXiJmee"
+  }
+}
