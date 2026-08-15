@@ -144,8 +144,19 @@ book. Two consequences worth stating rather than leaving to be discovered:
   2026-07-18 (v1.2) and 2026-08-09 (v1.3); public availability begins the day this repository
   was published. The two are separate requirements and carry separate dates.
 
-> **Still outstanding — a date is not a filing.** No venue submission has been made. DP-001
-> remains `draft`, `evidence/` is empty, and neither Software Heritage nor the Wayback
-> Machine has been asked to archive the repository. Publishing the repository closed the
-> availability gap; it did not by itself place the disclosure where an examiner searches.
-> See §4 of `docs/DEFENSIVE-PUBLISHING-GUIDE.md` for the venue ranking.
+**Independently archived the same day**, so availability does not depend on this repository
+staying online — identifiers and caveats in [`evidence/README.md`](evidence/README.md):
+
+| Archive | Identifier |
+|---|---|
+| Software Heritage snapshot | `swh:1:snp:41977f6b7b27ab1a29ae27fd5889b358f5834f36` |
+| `docs/SPEC.md` content | `swh:1:cnt:08626ba292a3adf59290e4335af02074e48941c0` |
+| `cell-crypto.js` content | `swh:1:cnt:9ca50b405ce218a158d2ce7f2ec517bfc331389f` |
+| Wayback Machine | repo page + raw `SPEC.md`, `cell-crypto.js`, `DEFENSIVE-DISCLOSURE.md` |
+
+> **Still outstanding — a date is not a filing.** No venue submission has been made; DP-001
+> remains `draft`. Steps 1–3 of the publishing guide's §5 anchoring stack are complete
+> (timestamp, signed tag, independent archive); **step 4 is not**. Publishing and archiving
+> closed the availability gap; neither places the disclosure where an examiner searches.
+> See §4 of `docs/DEFENSIVE-PUBLISHING-GUIDE.md` for the venue ranking — TDCommons is the
+> recommended free primary, and DP-001 is already drafted for it.
