@@ -152,7 +152,7 @@ staying online — identifiers and caveats in [`evidence/README.md`](evidence/RE
 | Software Heritage snapshot | `swh:1:snp:41977f6b7b27ab1a29ae27fd5889b358f5834f36` |
 | `docs/SPEC.md` content | `swh:1:cnt:08626ba292a3adf59290e4335af02074e48941c0` |
 | `cell-crypto.js` content | `swh:1:cnt:9ca50b405ce218a158d2ce7f2ec517bfc331389f` |
-| Wayback Machine | repo page + raw `SPEC.md`, `cell-crypto.js`, `DEFENSIVE-DISCLOSURE.md` |
+| Wayback Machine | snapshots `20260815124807` / `…4813` / `…4819` — the stored `SPEC.md` and `cell-crypto.js` were re-downloaded and **hash to their anchored digests** |
 
 > **Still outstanding — a date is not a filing.** No venue submission has been made; DP-001
 > remains `draft`. Steps 1–3 of the publishing guide's §5 anchoring stack are complete

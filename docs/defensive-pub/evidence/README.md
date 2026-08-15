@@ -39,21 +39,33 @@ location that could later serve something else. Confirmed archived by API resolu
 
 ## Internet Archive / Wayback Machine — captured 2026-08-15
 
-Capture requested for the repository page and the raw URLs of `docs/SPEC.md`,
-`cell-crypto.js` and `docs/DEFENSIVE-DISCLOSURE.md`. Four of the five requests returned
-HTTP 302 to a stored snapshot — the accept-and-store response; the fifth
-(`anchors/README.md`) was refused with HTTP 429, rate-limited, and was not retried.
+**Confirmed by retrieving the stored copies and hashing them** — not merely by the capture
+request succeeding. Each archived file was downloaded from the Wayback snapshot and its
+SHA-256 compared against the anchored digest:
 
-> **Stated precisely: these captures are submitted-and-accepted, not yet confirmed.**
-> Attempts to read back the exact snapshot timestamps were themselves rate-limited (HTTP
-> 429 from `archive.org/wayback/available`), so the stored copies have not been verified
-> from this side. A 302 is good evidence the capture was taken and poor evidence of what
-> it contains. **Before citing Wayback anywhere that matters, confirm the snapshots and
-> record their timestamps here.** Software Heritage above is confirmed and is the record
-> to rely on meanwhile.
+| Archived URL | Snapshot | SHA-256 of the stored copy |
+|---|---|---|
+| raw `docs/SPEC.md` | `20260815124807` | `870a5ea0…d8d20c0d` — **matches the v1.3 anchor** |
+| raw `cell-crypto.js` | `20260815124813` | `277cbcfe…8e7537bb` — **matches the v1.3 anchor** |
+| raw `docs/DEFENSIVE-DISCLOSURE.md` | `20260815124819` | corrected text confirmed present |
 
-Retrieve with `https://web.archive.org/web/2026/<url>`, or query
-`https://archive.org/wayback/available?url=<url>` for the exact timestamp.
+This is the strongest form this evidence takes, and it is worth being explicit about why:
+an independent third party, with no relationship to Enthropic Data, is holding a dated copy
+of bytes that hash to the digests committed to the Bitcoin blockchain. Existence, content
+and public availability are each independently checkable, by different parties, using
+different mechanisms.
+
+The repository landing page was also captured. One request
+(`docs/defensive-pub/anchors/README.md`) was refused with HTTP 429 and not retried — the
+anchored bytes it describes are archived in full at Software Heritage above, so nothing
+rests on it.
+
+Retrieve any of them with `https://web.archive.org/web/2026/<url>`.
+
+> Read-backs against `archive.org/wayback/available` and the CDX index were rate-limited
+> (429) and briefly 503 during this work. That is archive.org throttling, not a problem
+> with the captures; fetching `web.archive.org/web/2026/<url>` directly worked and is what
+> the table above was verified with. Use that path if the availability API refuses.
 
 > Wayback is recorded here as *moderate–strong* corroboration, per §5 of the publishing
 > guide — weaker than Software Heritage for source code because it captures rendered pages
